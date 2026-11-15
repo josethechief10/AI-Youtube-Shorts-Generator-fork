@@ -120,7 +120,7 @@ Return ONLY valid JSON. No markdown fences.
 
         for attempt in range(3):
             response = _generate(prompt)
-            clean_text = response.text.replace(String.fromCharCode(96).repeat(3) + "json", "").replace(String.fromCharCode(96).repeat(3), "").strip()
+            clean_text = response.text.replace(chr(96) * 3 + "json", "").replace(chr(96) * 3, "").strip()
 
             try:
                 script_data = json.loads(clean_text)
