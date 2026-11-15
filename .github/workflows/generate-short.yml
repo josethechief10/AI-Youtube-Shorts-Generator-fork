@@ -2,31 +2,39 @@ name: Generate Short
 
 on:
   schedule:
-    # 09:00 UTC daily
     - cron: "0 9 * * *"
   workflow_dispatch:
     inputs:
       topic:
-        description: "Topic to use (leave empty to let the AI pick one)"
+        description: "Tema del Short (déjalo vacío para que Gemini elija uno)"
         required: false
         type: string
       runs:
-        description: "How many videos to generate"
+        description: "Cantidad de videos"
         required: false
         default: "1"
         type: string
+      lang:
+        description: "Idioma"
+        required: false
+        default: "es"
+        type: choice
+        options:
+          - es
+          - pt-BR
+          - en
       voice:
-        description: "edge-tts voice"
+        description: "Voz edge-tts (déjala por defecto para seleccionar una voz según el idioma)"
         required: false
         default: "en-US-AvaNeural"
         type: string
       upload:
-        description: "Upload the result to YouTube"
+        description: "Subir el resultado a YouTube"
         required: false
         default: false
         type: boolean
       privacy:
-        description: "Privacy status for uploads"
+        description: "Privacidad de la subida"
         required: false
         default: "private"
         type: choice
@@ -38,7 +46,6 @@ on:
 jobs:
   generate:
     runs-on: ubuntu-latest
-    # Rendering 9 scenes plus the final stitch takes a while on a hosted runner.
     timeout-minutes: 60
 
     steps:
@@ -60,18 +67,15 @@ jobs:
       - name: Preflight
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-        run: python main.py --check
+        run: python main.py --check --lang "${{ inputs.lang || 'es' }}"
 
       - name: Generate
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
-          # Passed as env rather than interpolated into the script, so a topic
-          # containing shell metacharacters cannot break out of the command.
           INPUT_TOPIC: ${{ inputs.topic }}
           INPUT_RUNS: ${{ inputs.runs || '1' }}
+          INPUT_LANG: ${{ inputs.lang || 'es' }}
           INPUT_VOICE: ${{ inputs.voice || 'en-US-AvaNeural' }}
           INPUT_UPLOAD: ${{ inputs.upload }}
           INPUT_PRIVACY: ${{ inputs.privacy || 'private' }}
@@ -79,7 +83,7 @@ jobs:
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
         run: |
-          ARGS=(--runs "$INPUT_RUNS" --voice "$INPUT_VOICE")
+          ARGS=(--runs "$INPUT_RUNS" --lang "$INPUT_LANG" --voice "$INPUT_VOICE")
           if [ -n "$INPUT_TOPIC" ]; then
             ARGS+=(--topic "$INPUT_TOPIC")
           fi
@@ -89,13 +93,10 @@ jobs:
           python main.py "${ARGS[@]}"
 
       - name: Upload video
-        # Publish whatever rendered, even if a later run in a batch failed.
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: short-${{ github.run_id }}
           path: assets/final/*.mp4
-          # A failed generate already fails the job; erroring here too would
-          # just bury the real cause under a second, misleading error.
           if-no-files-found: warn
           retention-days: 14
